@@ -6,7 +6,7 @@ import os
 
 
 # folders
-INPUT_FOLDER = "Ejemplares_prueba"
+INPUT_FOLDER = "my_inputs"
 OUTPUT_FOLDER = "my_outputs"
 DEBUG_FOLDER = "debug_outputs"
 
@@ -112,7 +112,7 @@ if __name__ == "__main__":
     parser.add_argument("-i", "--input_file", help="path to the input file")
     parser.add_argument("-o", "--output_file", help="path to the output file")
     parser.add_argument("-f", "--force", default=False, action='store_true',
-                        help="if set to True and output file already exists, it overwrites with new new results")
+                        help="if set to True and output file already exists, it overwrites with new results")
     parser.add_argument("-d", "--debug", default=False, action='store_true',
                         help="useful insights on what the program is doing, and an output that is easier to read. "
                              "CAREFUL: the output will no longer be valid if this parameter is used.")
