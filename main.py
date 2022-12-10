@@ -61,7 +61,7 @@ def main(inp, out, debug=False, force=False):
                 # transport: only if there is no other product (from another line) that is already being transported
                 # to the same site, in this same instant
                 reuse_transport = False
-                for rt_n_product_type in range(N):
+                for rt_n_product_type in range(TP):
                     if nue[n_site][rt_n_product_type][lines_unavailability[n_line] + production_time - 1] != 0:
                         reuse_transport = True
                 if not reuse_transport:
@@ -73,6 +73,7 @@ def main(inp, out, debug=False, force=False):
                 nuf[n_line] += [extra_quantity] * (extra_quantity > 0)
                 nue[n_site][n_product_type][lines_unavailability[n_line] + production_time - 1] = \
                     D[n_site][n_product_type]
+                if debug: print(f"{n_site}\t{n_product_type}\t{lines_unavailability[n_line] + production_time - 1}\t{reuse_transport}")
                 # update availability
                 lines_unavailability[n_line] += production_time
                 free_line_found = True
@@ -85,6 +86,12 @@ def main(inp, out, debug=False, force=False):
             other_cost += CR[n_site][n_product_type] * (D[n_site][n_product_type] ** alpha)  # for debugging
             # update output
             nr[n_site][n_product_type] = D[n_site][n_product_type]
+    if debug:
+        for instant in range(H):
+            print(f"insant = {instant}")
+            for n_product_type in range(TP):
+                if nue[7][n_product_type][instant] != 0:
+                    print(f"\t{n_product_type}\t{CostT[7]}")
     if debug:
         print(f"production:\t{production_cost}")
         print(f"transport:\t{transport_cost}")
