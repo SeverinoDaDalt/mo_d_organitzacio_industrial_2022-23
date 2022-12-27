@@ -25,9 +25,27 @@ def main(inp, out, debug=False, force=False):
 
     F, TP, N, H, D, PL, Cap, CostF, CostT, alpha, CR = read(inp)  # reading input
 
-    beta_t = 0
-    beta_c = 1
-    beta_b = 0
+    betas_t = [0, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500]
+    betas_c = [0, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500]
+    betas_b = [0, 10, 100, 1000, 10000, 100000]
+
+    all_combinations = []
+    for beta_t in betas_t:
+        for beta_c in betas_c:
+            for beta_b in betas_b:
+                all_combinations.append((beta_t, beta_c, beta_b))
+
+    temporary_results = {}
+    minimum_total_cost = float("inf")
+    pf_of_best = [[]]
+    nuf_of_best = [[]]
+    nue_of_best = [[[]]]
+    nr_of_best = [[]]
+    buy_cost_of_best = 0
+    production_cost_of_best = 0
+    transport_cost_of_best = 0
+    time_of_best = 0
+    n_improvement = 0
 
     # input production line
     # TODO: (possible improvement) adapt input production line with corrector
@@ -37,54 +55,49 @@ def main(inp, out, debug=False, force=False):
         for n_site, n_product_type in input_production_line:
             print(f"Site:{n_site}\tProduct: {n_product_type}\t(Limit: {PL[n_site][n_product_type]})")
 
-    # assigner
-    to_buy, to_produce = assigner(input_production_line, F, D, PL, Cap, CostF, alpha, CR, beta_t, beta_c, beta_b)
-    if debug and to_buy:
-        print("To buy:")
-        for n_site, n_product_type in to_buy:
-            print(f"Site:{n_site}\tProduct: {n_product_type}")
-    if debug and to_produce:
-        print("To produce:")
-        for n_line in range(len(to_produce)):
-            print(f"Line: {n_line}")
-            for n_site, n_product_type, time_ in to_produce[n_line]:
-                print(f"\tSite:{n_site}\tProduct: {n_product_type}\tTime: {time_}")
+    for betas in all_combinations:
+        beta_t = betas[0]
+        beta_c = betas[1]
+        beta_b = betas[2]
 
-    # output generator
-    pf, nuf, nue, nr, buy_cost, production_cost, transport_cost = \
-        output_generator(to_produce, to_buy, F, TP, N, H, D, PL, Cap, CostF, CostT, alpha, CR)
-    total_cost = production_cost + transport_cost + buy_cost  # total cost
+        # assigner
+        to_buy, to_produce = assigner(input_production_line, F, D, PL, Cap, CostF, alpha, CR, beta_t, beta_c, beta_b)
+
+        # output generator
+        pf, nuf, nue, nr, buy_cost, production_cost, transport_cost = \
+            output_generator(to_produce, to_buy, F, TP, N, H, D, PL, Cap, CostF, CostT, alpha, CR)
+        total_cost = production_cost + transport_cost + buy_cost  # total cost
+
+        temporary_results[betas] = total_cost
+
+        if total_cost < minimum_total_cost:
+            minimum_total_cost = total_cost
+            pf_of_best = pf
+            nuf_of_best = nuf
+            nue_of_best = nue
+            nr_of_best = nr
+            buy_cost_of_best = buy_cost
+            production_cost_of_best = production_cost
+            transport_cost_of_best = transport_cost
+            time_of_best = time() - start
+            write_update(minimum_total_cost, time_of_best, out, n_improvement, debug=debug, overwrite=True)
+            n_improvement += 1
+
     if debug:
-        print("*** pf ***")
-        for line in pf:
-            print(f"\t{[n_product_type + 1 for n_product_type in line]}")
-        print("*** nuf ***")
-        for line in nuf:
-            print(f"\t{line}")
-        print("*** nue ***")
-        for n_site in range(len(nue)):
-            print(f"\tSite {n_site}")
-            for n_product_type in range(len(nue[n_site])):
-                print(f"\t\t{nue[n_site][n_product_type]}")
-        print("*** nr ***")
-        for site in nr:
-            print(f"\t{site}")
-        print(f"Production cost:\t{production_cost}")
-        print(f"Transport cost: \t{transport_cost}")
-        print(f"Buy cost:       \t{buy_cost}")
+        print(f"Production cost:\t{production_cost_of_best}")
+        print(f"Transport cost: \t{transport_cost_of_best}")
+        print(f"Buy cost:       \t{buy_cost_of_best}")
         print("-----------------------------------------")
-        print(f"Total cost:     \t{total_cost}")
-    total_time = time() - start
+        print(f"Total cost:     \t{minimum_total_cost}")
 
     # write output
-    n_improvement = 0
     if os.path.isfile(out) and not force:
         print(f"The output file {out} already exists, no changes will be saved. If you want to overwrite old results "
               f"with the new ones, use the 'force' parameter ('-f' or '--force').")
     else:
-        write_update(total_cost, total_time, out, n_improvement, debug=debug, overwrite=True)
-        write_best_result(total_cost, total_time, out, n_improvement, pf, nuf, nue, nr, debug=debug)
-    return total_cost
+        write_best_result(minimum_total_cost, time_of_best, out, n_improvement,
+                          pf_of_best, nuf_of_best, nue_of_best, nr_of_best, debug=debug)
+    return minimum_total_cost
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 import main
 
-VERSION = 0.1
+VERSION = 0.2
 
 with open(f"results/results_v{VERSION}.txt", "w") as o_f:
     o_f.write(f"Version: {VERSION}\n")
