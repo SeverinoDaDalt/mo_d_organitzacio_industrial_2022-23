@@ -1,5 +1,6 @@
 from data_reader import read
 from output_writer import write_update, write_best_result
+from utils import get_input_production_line, assigner, output_generator
 from time import time
 import argparse
 import os
@@ -21,87 +22,58 @@ def main(inp, out, debug=False, force=False):
         out = os.path.join(OUTPUT_FOLDER, out)
 
     start = time()  # start timer
+
     F, TP, N, H, D, PL, Cap, CostF, CostT, alpha, CR = read(inp)  # reading input
-    lines_unavailability = [0] * F  # preparing production line
 
-    # preparing output
-    pf = [[] for i in range(F)]
-    nuf = [[] for i in range(F)]
-    nue = [[[0] * H for j in range(TP)] for i in range(N)]
-    nr = [[0] * TP for i in range(N)]
+    beta_t = 0
+    beta_c = 1
+    beta_b = 0
 
-    # where costs will cumulatively be stored
-    total_cost = 0
-    production_cost = 0
-    transport_cost = 0
-    other_cost = 0
-
-    # production management
-    for n_site in range(N):
-        for n_product_type in range(TP):
-            # we check that this product for this site needs to be produced
-            if not PL[n_site][n_product_type]:
-                continue
-            free_line_found = False
-            for n_line in range(F):
-                # check if this product can be produced in this line
-                if not Cap[n_line][n_product_type]:
-                    continue
-                # how long would the production take on this line
-                full_time = D[n_site][n_product_type] // Cap[n_line][n_product_type]  # full production time
-                extra_quantity = D[n_site][n_product_type] % Cap[n_line][n_product_type]
-                production_time = full_time + (extra_quantity > 0)
-                # we check if this line can produce the product on time
-                if lines_unavailability[n_line] + production_time > PL[n_site][n_product_type]:
-                    continue
-                # update total cost
-                # production
-                total_cost += CostF[n_line][n_product_type] * D[n_site][n_product_type]
-                production_cost += CostF[n_line][n_product_type] * D[n_site][n_product_type]  # for debugging
-                # transport: only if there is no other product (from another line) that is already being transported
-                # to the same site, in this same instant
-                reuse_transport = False
-                for rt_n_product_type in range(TP):
-                    if nue[n_site][rt_n_product_type][lines_unavailability[n_line] + production_time - 1] != 0:
-                        reuse_transport = True
-                if not reuse_transport:
-                    total_cost += CostT[n_site]
-                    transport_cost += CostT[n_site]  # for debugging
-                # update output
-                pf[n_line] += [n_product_type] * production_time
-                nuf[n_line] += [Cap[n_line][n_product_type]] * full_time
-                nuf[n_line] += [extra_quantity] * (extra_quantity > 0)
-                nue[n_site][n_product_type][lines_unavailability[n_line] + production_time - 1] = \
-                    D[n_site][n_product_type]
-                if debug: print(f"{n_site}\t{n_product_type}\t{lines_unavailability[n_line] + production_time - 1}\t{reuse_transport}")
-                # update availability
-                lines_unavailability[n_line] += production_time
-                free_line_found = True
-                break
-            # check if a production line was already found
-            if free_line_found:
-                continue
-            # update total cost
-            total_cost += CR[n_site][n_product_type] * (D[n_site][n_product_type] ** alpha)
-            other_cost += CR[n_site][n_product_type] * (D[n_site][n_product_type] ** alpha)  # for debugging
-            # update output
-            nr[n_site][n_product_type] = D[n_site][n_product_type]
+    # input production line
+    # TODO: (possible improvement) adapt input production line with corrector
+    input_production_line = get_input_production_line(N, TP, PL)
     if debug:
-        for instant in range(H):
-            print(f"insant = {instant}")
-            for n_product_type in range(TP):
-                if nue[7][n_product_type][instant] != 0:
-                    print(f"\t{n_product_type}\t{CostT[7]}")
+        print("Production_line:")
+        for n_site, n_product_type in input_production_line:
+            print(f"Site:{n_site}\tProduct: {n_product_type}\t(Limit: {PL[n_site][n_product_type]})")
+
+    # assigner
+    to_buy, to_produce = assigner(input_production_line, F, D, PL, Cap, CostF, alpha, CR, beta_t, beta_c, beta_b)
+    if debug and to_buy:
+        print("To buy:")
+        for n_site, n_product_type in to_buy:
+            print(f"Site:{n_site}\tProduct: {n_product_type}")
+    if debug and to_produce:
+        print("To produce:")
+        for n_line in range(len(to_produce)):
+            print(f"Line: {n_line}")
+            for n_site, n_product_type, time_ in to_produce[n_line]:
+                print(f"\tSite:{n_site}\tProduct: {n_product_type}\tTime: {time_}")
+
+    # output generator
+    pf, nuf, nue, nr, buy_cost, production_cost, transport_cost = \
+        output_generator(to_produce, to_buy, F, TP, N, H, D, PL, Cap, CostF, CostT, alpha, CR)
+    total_cost = production_cost + transport_cost + buy_cost  # total cost
     if debug:
-        print(f"production:\t{production_cost}")
-        print(f"transport:\t{transport_cost}")
-        print(f"other:  \t{other_cost}")
-        print(f"TOTAL:  \t{total_cost}")
-    # complete pf and nuf output with unused instants
-    for line in pf:
-        line += [-1] * (H - len(line))
-    for line in nuf:
-        line += [0] * (H - len(line))
+        print("*** pf ***")
+        for line in pf:
+            print(f"\t{[n_product_type + 1 for n_product_type in line]}")
+        print("*** nuf ***")
+        for line in nuf:
+            print(f"\t{line}")
+        print("*** nue ***")
+        for n_site in range(len(nue)):
+            print(f"\tSite {n_site}")
+            for n_product_type in range(len(nue[n_site])):
+                print(f"\t\t{nue[n_site][n_product_type]}")
+        print("*** nr ***")
+        for site in nr:
+            print(f"\t{site}")
+        print(f"Production cost:\t{production_cost}")
+        print(f"Transport cost: \t{transport_cost}")
+        print(f"Buy cost:       \t{buy_cost}")
+        print("-----------------------------------------")
+        print(f"Total cost:     \t{total_cost}")
     total_time = time() - start
 
     # write output
@@ -112,6 +84,7 @@ def main(inp, out, debug=False, force=False):
     else:
         write_update(total_cost, total_time, out, n_improvement, debug=debug, overwrite=True)
         write_best_result(total_cost, total_time, out, n_improvement, pf, nuf, nue, nr, debug=debug)
+    return total_cost
 
 
 if __name__ == "__main__":

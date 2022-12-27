@@ -12,8 +12,10 @@ def read(file_name):
     - H: periodos de tiempo maximo
     - D[j][p]: unidades de producto 'p' que se requieren en la obra 'j'
     - PL[j][p]: periodo limite en el que debe salir de fabrica la demanda de producto 'p' para la obra 'j'
-    - Cap[i][p]: unidades de producto 'p' que puede generar la linea 'i' por unidad de tiempo
-    - CostF[i][p]: coste de fabricacion de una unidad de producto 'p' en la linea 'i'. Si Cap[i][p] = 0, entonces Cost[i][p] = 0
+    - Cap[i][p]: unidades de producto 'p' que puede generar la linea 'i' por unidad de tiempo. Si Cap[i][p] = 0, no se
+      puede producir este producto en esta linea
+    - CostF[i][p]: coste de fabricacion de una unidad de producto 'p' en la linea 'i'. Si Cap[i][p] = 0, entonces
+      Cost[i][p] = 0
     - CostT[j]: coste, por viaje, de transporte de productos a la obra 'j' 
     - alpha: factor de penalización impuesto por la empresa (>= 1)
     - CR[j][p]: coste de compra (fabricacion y transporte) del una unidad de producto 'p' para la obra 'j' 
