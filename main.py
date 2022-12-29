@@ -1,15 +1,21 @@
 from data_reader import read
-from output_writer import write_update, write_best_result
+from output_writer import write_update, write_best_result, clear_file
 from utils import get_input_production_line, assigner, output_generator
 from time import time
 import argparse
 import os
+import random
+import math
 
 
 # folders
 INPUT_FOLDER = "my_inputs"
 OUTPUT_FOLDER = "my_outputs"
 DEBUG_FOLDER = "debug_outputs"
+
+TOTAL_TIME = 300
+MAXIMUM_PRODUCTION_LINE_SWAPS = 0.5  # in (0, 1)
+MAXIMUM_NEXT_BEST_PROBABILITY = 0.8  # in (0, 1)
 
 
 def main(inp, out, debug=False, force=False):
@@ -21,21 +27,36 @@ def main(inp, out, debug=False, force=False):
     else:
         out = os.path.join(OUTPUT_FOLDER, out)
 
+    # write output
+    if os.path.isfile(out):
+        if force:
+            clear_file(out)
+        else:
+            print(f"The output file {out} already exists, no changes will be saved. If you want to overwrite old "
+                  f"results with the new ones, use the 'force' parameter ('-f' or '--force').")
+            return
+
     start = time()  # start timer
 
     F, TP, N, H, D, PL, Cap, CostF, CostT, alpha, CR = read(inp)  # reading input
 
-    betas_t = [0, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500]
-    betas_c = [0, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500]
-    betas_b = [0, 10, 100, 1000, 10000, 100000]
+    # initialize betas
+    betas_constants = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    betas_orders = [0.001, 0.01, 0.1, 1, 10, 100]
+    betas = [0]
+    for order in betas_orders:
+        betas += list(map((lambda x: x*order), betas_constants))
 
-    all_combinations = []
-    for beta_t in betas_t:
-        for beta_c in betas_c:
-            for beta_b in betas_b:
-                all_combinations.append((beta_t, beta_c, beta_b))
+    # initialize deltas
+    deltas_constants = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    deltas_orders = [1000, 10000, 100000]
+    deltas = [0]
+    for order in deltas_orders:
+        deltas += list(map((lambda x: x*order), deltas_constants))
 
-    temporary_results = {}
+    # initialize info for best run
+    best_betas = []
+    best_deltas = []
     minimum_total_cost = float("inf")
     pf_of_best = [[]]
     nuf_of_best = [[]]
@@ -47,28 +68,66 @@ def main(inp, out, debug=False, force=False):
     time_of_best = 0
     n_improvement = 0
 
-    # input production line
-    # TODO: (possible improvement) adapt input production line with corrector
-    input_production_line = get_input_production_line(N, TP, PL)
-    if debug:
-        print("Production_line:")
-        for n_site, n_product_type in input_production_line:
-            print(f"Site:{n_site}\tProduct: {n_product_type}\t(Limit: {PL[n_site][n_product_type]})")
+    # STEP 1: find most suitable betas and deltas
+    if debug: print(f"STEP 1")
 
-    for betas in all_combinations:
-        beta_t = betas[0]
-        beta_c = betas[1]
-        beta_b = betas[2]
+    # input production line
+    input_production_line = get_input_production_line(N, TP, PL)
+
+    for beta in betas:
+        for delta in deltas:
+            # assigner
+            to_buy, to_produce = assigner(input_production_line, F, D, PL, Cap, CostF, alpha, CR, beta, delta)
+
+            # output generator
+            pf, nuf, nue, nr, buy_cost, production_cost, transport_cost = \
+                output_generator(to_produce, to_buy, F, TP, N, H, D, PL, Cap, CostF, CostT, alpha, CR)
+            total_cost = production_cost + transport_cost + buy_cost  # total cost
+            if abs(total_cost - minimum_total_cost) < 1.e-8:
+                best_betas.append(beta)
+                best_deltas.append(delta)
+            elif total_cost < minimum_total_cost:
+                best_betas = [beta]
+                best_deltas = [delta]
+                minimum_total_cost = total_cost
+                pf_of_best = pf
+                nuf_of_best = nuf
+                nue_of_best = nue
+                nr_of_best = nr
+                buy_cost_of_best = buy_cost
+                production_cost_of_best = production_cost
+                transport_cost_of_best = transport_cost
+                time_of_best = time() - start
+                write_update(minimum_total_cost, time_of_best, out, n_improvement, debug=debug, overwrite=False)
+                n_improvement += 1
+                if debug:
+                    print(f"Beta: {'%.1f'%beta}\tDelta: {'%.1f'%delta}\tScore: {'%.1f'%minimum_total_cost}"
+                          f"\t(in {time_of_best} s)")
+                else:
+                    print(f"{minimum_total_cost}\t{time_of_best}")
+
+    # STEP 2: randomize
+    if debug: print(f"STEP 2")
+    beta_range = (min(best_betas) * 0.1, min(best_betas) * 1.9)
+    delta_range = (min(best_deltas) * 0.1, min(best_deltas) * 1.9)
+    while time() - start < TOTAL_TIME:
+        beta = random.uniform(beta_range[0], beta_range[1])
+        delta = random.uniform(delta_range[0], delta_range[1])
+        production_line_swaps = random.randint(0, int(math.floor(MAXIMUM_PRODUCTION_LINE_SWAPS *
+                                                                 len(input_production_line))))
+        next_best_probability = random.uniform(0, MAXIMUM_NEXT_BEST_PROBABILITY)
+
+        # input production line
+        input_production_line = get_input_production_line(N, TP, PL, swaps=production_line_swaps)
 
         # assigner
-        to_buy, to_produce = assigner(input_production_line, F, D, PL, Cap, CostF, alpha, CR, beta_t, beta_c, beta_b)
+        to_buy, to_produce = assigner(input_production_line, F, D, PL, Cap, CostF, alpha, CR, beta, delta,
+                                      jump_p=next_best_probability)
 
         # output generator
         pf, nuf, nue, nr, buy_cost, production_cost, transport_cost = \
             output_generator(to_produce, to_buy, F, TP, N, H, D, PL, Cap, CostF, CostT, alpha, CR)
         total_cost = production_cost + transport_cost + buy_cost  # total cost
-
-        temporary_results[betas] = total_cost
 
         if total_cost < minimum_total_cost:
             minimum_total_cost = total_cost
@@ -80,23 +139,28 @@ def main(inp, out, debug=False, force=False):
             production_cost_of_best = production_cost
             transport_cost_of_best = transport_cost
             time_of_best = time() - start
-            write_update(minimum_total_cost, time_of_best, out, n_improvement, debug=debug, overwrite=True)
+            write_update(minimum_total_cost, time_of_best, out, n_improvement, debug=debug, overwrite=False)
             n_improvement += 1
+            if debug:
+                print(f"Beta: {'%.1f'%beta}\tDelta: {'%.1f'%delta}\tScore: {'%.1f'%minimum_total_cost}"
+                      f"\t(in {time_of_best} s)")
+            else:
+                print(f"{minimum_total_cost}\t{time_of_best}")
 
+    # finished
     if debug:
         print(f"Production cost:\t{production_cost_of_best}")
         print(f"Transport cost: \t{transport_cost_of_best}")
         print(f"Buy cost:       \t{buy_cost_of_best}")
         print("-----------------------------------------")
         print(f"Total cost:     \t{minimum_total_cost}")
+    else:
+        print(n_improvement)
+        print(f"{minimum_total_cost}\t{time_of_best}")
 
     # write output
-    if os.path.isfile(out) and not force:
-        print(f"The output file {out} already exists, no changes will be saved. If you want to overwrite old results "
-              f"with the new ones, use the 'force' parameter ('-f' or '--force').")
-    else:
-        write_best_result(minimum_total_cost, time_of_best, out, n_improvement,
-                          pf_of_best, nuf_of_best, nue_of_best, nr_of_best, debug=debug)
+    write_best_result(minimum_total_cost, time_of_best, out, n_improvement, pf_of_best, nuf_of_best, nue_of_best,
+                      nr_of_best, debug=debug)
     return minimum_total_cost
 
 

@@ -1,3 +1,6 @@
+import random
+
+
 def quicksort(list_, comparator=(lambda x, y: x < y), reverse=False):
     """
     Uses quick sort algorithm to sort a list.
@@ -6,6 +9,8 @@ def quicksort(list_, comparator=(lambda x, y: x < y), reverse=False):
     :param reverse: bool -> whether to return the resulting list in reverse other. Default is False.
     :return: list
     """
+    if not list_:
+        return []
     pivot = list_[-1]
     smaller = []
     bigger_or_equal = []
@@ -21,7 +26,7 @@ def quicksort(list_, comparator=(lambda x, y: x < y), reverse=False):
     return smaller + [pivot] + bigger_or_equal
 
 
-def get_input_production_line(N, TP, PL):
+def get_input_production_line(N, TP, PL, swaps=0):
     input_production_line = []
     for n_site in range(N):
         for n_product_type in range(TP):
@@ -33,10 +38,18 @@ def get_input_production_line(N, TP, PL):
     def sort_orders(order1, order2):
         return PL[order1[0]][order1[1]] < PL[order2[0]][order2[1]]
 
-    return quicksort(input_production_line, comparator=sort_orders)
+    sorted_input_production_line = quicksort(input_production_line, comparator=sort_orders)
+    for _ in range(swaps):
+        swap_point = random.randint(0, len(sorted_input_production_line) - 2)
+        # swap!
+        aux = sorted_input_production_line[swap_point]
+        sorted_input_production_line[swap_point] = sorted_input_production_line[swap_point + 1]
+        sorted_input_production_line[swap_point + 1] = aux
+
+    return sorted_input_production_line
 
 
-def assigner(input_production_line, F, D, PL, Cap, CostF, alpha, CR, beta_t, beta_c, beta_b):
+def assigner(input_production_line, F, D, PL, Cap, CostF, alpha, CR, beta, delta, jump_p=0):
     lines_unavailability = [0] * F  # preparing production lines
     to_buy = []  # store buy decisions
     to_produce = [[] for _ in range(F)]  # store line assignments
@@ -59,21 +72,24 @@ def assigner(input_production_line, F, D, PL, Cap, CostF, alpha, CR, beta_t, bet
         lines_cost = {}
         for n_line in lines_time:
             lines_cost[n_line] = CostF[n_line][n_product_type]
-        # TODO: check if another transport can be used (now or in the future)
-        # TODO: filter out those lines for which the production + transport (if any) cost is higher than buying it
         # priority
-        lines_priority = {}  # TODO: remove, currently it has no use
-        maximum_priority = float('-inf')
-        maximum_priority_line = None
+        lines_priority = {}
         for n_line in lines_time:
-            line_priority = - beta_t * lines_time[n_line] - beta_c * lines_cost[n_line]
+            line_priority = - beta * lines_time[n_line] - lines_cost[n_line]
             lines_priority[n_line] = line_priority
-            if line_priority > maximum_priority:
-                maximum_priority_line = n_line
-                maximum_priority = line_priority
+        sorted_priorities = quicksort(list(lines_priority.items()), comparator=(lambda x, y: x[1] < y[1]))
+        maximum_priority_line = None
+        # randomize
+        not_found = True
+        while sorted_priorities and not_found:  # lines priorities may be empty if no lines available
+            new_priority = sorted_priorities.pop()
+            if random.uniform(0, 1) < jump_p and len(sorted_priorities):
+                continue
+            maximum_priority_line = new_priority[0]
+            not_found = False
         # if no line is available for this product, or buying it is cheaper (or worth it in any sense), buy it
         buying_cost = CR[n_site][n_product_type] * (D[n_site][n_product_type] ** alpha)
-        if maximum_priority_line is None or lines_cost[maximum_priority_line] >= buying_cost - beta_b:
+        if maximum_priority_line is None or lines_cost[maximum_priority_line] >= buying_cost - delta:
             to_buy.append((n_site, n_product_type))
             continue
         to_produce[maximum_priority_line].append((n_site, n_product_type, lines_unavailability[maximum_priority_line]))
@@ -143,7 +159,7 @@ def output_generator(to_produce, to_buy, F, TP, N, H, D, PL, Cap, CostF, CostT, 
             if extra_quantity:
                 nuf[n_line][time_ + full_time] = extra_quantity
             # delivery auxiliary
-            delivery_aux[n_site][n_product_type] = (time_ + production_time - 1, PL[n_site][n_product_type])  # TODO: Possible error. This is just a friendly reminder to check here if tester does not like the solution.
+            delivery_aux[n_site][n_product_type] = (time_ + production_time - 1, PL[n_site][n_product_type])
     # nue
     nue, transport_cost = delivery_optimizer(delivery_aux, TP, N, H, D, CostT)
     # nr
