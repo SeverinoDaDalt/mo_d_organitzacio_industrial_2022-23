@@ -1,3 +1,13 @@
+def clear_file(out):
+    """
+    Clears selected file.
+    INPUT:
+    - out: path to the output file
+    OUTPUT: None
+    """
+    open(out, "w").close()
+
+
 def write_update(total_cost, total_time, out, n_improvement, debug=False, overwrite=False):
     """
     Updates output file with the new best result.
