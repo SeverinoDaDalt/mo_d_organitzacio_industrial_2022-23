@@ -108,8 +108,8 @@ def main(inp, out, debug=False, force=False):
 
     # STEP 2: randomize
     if debug: print(f"STEP 2")
-    beta_range = (min(best_betas) * 0.1, min(best_betas) * 1.9)
-    delta_range = (min(best_deltas) * 0.1, min(best_deltas) * 1.9)
+    beta_range = (min(best_betas) * 0.1, max(best_betas) * 1.9)
+    delta_range = (min(best_deltas) * 0.1, max(best_deltas) * 1.9)
     while time() - start < TOTAL_TIME:
         beta = random.uniform(beta_range[0], beta_range[1])
         delta = random.uniform(delta_range[0], delta_range[1])
